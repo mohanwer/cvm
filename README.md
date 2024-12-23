@@ -1,7 +1,7 @@
 # cvm
 Client version manager that replaces a running app with a new version
 
-The cvm (Client Version Manager) is designed:
+The cvm (Client Version Manager) does the following with executable process:
 1. Retrieve a compiled app from the cvm_server,
 2. Run the app until a new version is found.
 3. Stop the old version and begin the process again using the new version from step 1.
