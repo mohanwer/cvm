@@ -1,0 +1,4 @@
+DB_HOST = local
+DB_USER = postgres
+DB_PW = ""
+DB_NAME = client_version_manager_test
