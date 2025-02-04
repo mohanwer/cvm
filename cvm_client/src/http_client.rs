@@ -24,6 +24,11 @@ impl LatestVersionResponse {
     }
 }
 
+/// CVM Http Client
+///
+/// A http client that is used to communicate with the CVM server.
+/// This client has utilities to retrieve the latest version of an application and report
+/// successful or unsuccessful startups of the version retrieved.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ClientDetails {
     pub client_id: String,
@@ -72,6 +77,7 @@ impl CvmHttpClient {
         self.client_details.current_running_version = version.to_string();
     }
 
+    /// Checks the CVM server for the latest version and returns the result.
     pub async fn check_latest(&mut self) -> Result<LatestVersionResponse> {
         let payload = serde_json::to_value(&self.client_details).map_err(map_serialize_error)?;
         let response = self
@@ -99,6 +105,7 @@ impl CvmHttpClient {
         Ok(result)
     }
 
+    /// Used to report successful startup of the latest version to the CVM server
     pub async fn report_healthy(&mut self) -> Result<()> {
         let payload = serde_json::to_value(&self.client_details).map_err(map_serialize_error)?;
         let response = self
@@ -114,6 +121,7 @@ impl CvmHttpClient {
         Ok(())
     }
 
+    /// Used to report failed startup of the latest version to the CVM server
     pub async fn report_failure(&mut self) -> Result<()> {
         let payload = serde_json::to_value(&self.client_details).map_err(map_serialize_error)?;
         let response = self
@@ -129,6 +137,7 @@ impl CvmHttpClient {
         Ok(())
     }
 
+    /// Downloads the app found at url passed in.
     pub async fn download_version(&mut self, url: &str) -> Result<PathBuf> {
         Builder::new()
             .prefix("cvm_tmp_downloads")

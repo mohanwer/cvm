@@ -27,7 +27,17 @@ pub struct RunResult {
     pub life_time_duration_reached: bool,
 }
 
+
+
+/// # CVM Client Monitor
+///
+/// A library that keeps the latest version of an application running on a client.
+/// This library will check the CVM server for the latest version, run it, and poll the server
+/// until a new version is found. Once a new version is found, the old version shuts down, and
+/// the new version is started.
 impl CvmClientMonitor {
+
+    // TODO: Pass in http client so that we can pass in a mock http client.
     pub fn new(
         config: Config,
         version_check_poll_interval: Duration,
@@ -41,12 +51,17 @@ impl CvmClientMonitor {
         }
     }
 
+    /// Starts a child process for the app and while the parent process polls for a new version.
+    /// When a new version is found, the running child process will shut down. A new process
+    /// will be started with the latest version.
     pub async fn run_and_remain_alive(&mut self) -> Result<()> {
         loop {
             self.run_latest_until_version_outdated().await?;
         }
     }
 
+    /// Runs a specific version of the app until a new version is found. This is particularly
+    /// useful in case we want to test version handling or want to start off an earlier version.
     pub async fn run_specified_version_until_outdated(
         &mut self,
         version_url: &str,
@@ -67,6 +82,8 @@ impl CvmClientMonitor {
         })
     }
 
+    /// Runs the latest version of the app until a new version is found. If a new version is found
+    /// then the current version is gracefully shutdown and the result of the run is returned.
     pub async fn run_latest_until_version_outdated(&mut self) -> Result<RunResult> {
         let latest_path = &self.get_latest_file_path().await?;
         let last_version_ran = strip_version_from_file_name(&latest_path);
@@ -84,9 +101,12 @@ impl CvmClientMonitor {
         })
     }
 
+    /// Calls the server to get the latest version number. If it is not currently on the file system
+    /// then it is downloaded.
     async fn get_latest_file_path(&mut self) -> Result<PathBuf> {
         let latest_version_response = self.http_client.check_latest().await?;
         let file_name = &latest_version_response.get_file_name();
+        // TODO: use named error in place of unwrap.
         let file_path = current_dir().unwrap().join(file_name);
         if file_path.exists() {
             return Ok(file_path);
@@ -99,6 +119,9 @@ impl CvmClientMonitor {
         Ok(new_path)
     }
 
+    /// Starts a separate process to run the application. While the application is running, the
+    /// parent process polls for a new version. If a new version is found, the child process is
+    /// gracefully shutdown.
     async fn run_until_new_version_found(&mut self, latest_path: &PathBuf) -> Result<()> {
         let current_running_version: Child;
         match start_process(latest_path).await {
@@ -115,11 +138,17 @@ impl CvmClientMonitor {
             .poll_until_new_version(self.version_check_poll_interval)
             .await;
         if new_version_found {
+            // It's possible a lifetime duration was passed so this may not always be true especially
+            // during integration tests.
             let _ = graceful_shutdown(current_running_version)?;
         }
         Ok(())
     }
 
+    /// Polls server on an interval for new version. When a new version is found true is returned.
+    /// If life_time_duration is set, the polling will end at the end of the specified lifetime.
+    /// life_time_duration is primarily used to allow the application to halt during integration
+    /// tests.
     pub async fn poll_until_new_version(&mut self, poll_interval: Duration) -> bool {
         let mut interval = tokio::time::interval(poll_interval);
         let start_poll_time = chrono::Utc::now();
@@ -153,6 +182,8 @@ impl CvmClientMonitor {
     }
 }
 
+/// Starts the process found at the path_buf. Once started, the application will be checked
+/// up to three times to ensure it does not exit early.
 pub async fn start_process(path_buf: &PathBuf) -> Result<Child> {
     // Set file permissions to 777
     let mut perms = std::fs::metadata(&path_buf)
@@ -164,9 +195,11 @@ pub async fn start_process(path_buf: &PathBuf) -> Result<Child> {
 
     let mut child = Command::new(path_buf)
         .spawn()
+        // TODO: Use named error
         .expect("Failed to start the process");
     let mut cnt_proc_checked = 0;
 
+    // TODO: Move 3 to constant.
     while cnt_proc_checked < 3 {
         match child.try_wait() {
             Ok(Some(status)) => return Err(ProcessExitEarly { status }),
@@ -185,16 +218,23 @@ pub async fn start_process(path_buf: &PathBuf) -> Result<Child> {
     Ok(child)
 }
 
+/// Shuts down an application using Sigterm and waits for the shutdown to occur.
+/// The application may need to be drained for in flight messages which is why we wait for shutdown.
 pub fn graceful_shutdown(child: Child) -> Result<bool> {
     let sigterm = ctrlc::Signal::SIGTERM.to_string();
     let mut kill = Command::new("kill")
         .args(["-s", &sigterm, &child.id().to_string()])
         .spawn()
+        // TODO: Use named error
         .expect("Unable to send command");
+
+    // TODO: Specify a wait time before issuing a kill. Use named error.
     kill.wait().expect("couldn't wait");
     Ok(true)
 }
 
+/// Extracts the version number from the file name. Assumes the file name will be in the format
+/// file_name_0.3.2
 pub fn strip_version_from_file_name(path_buf: &PathBuf) -> String {
     path_buf
         .file_name()

@@ -74,6 +74,7 @@ struct LatestVersion {
     update_required: bool,
 }
 
+/// Starts web server to start listening for cvm clients.
 pub async fn start() {
     tracing_subscriber::registry()
         .with(
@@ -83,6 +84,7 @@ pub async fn start() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    // Create database connection pool that will provide connections to route handlers.
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .acquire_timeout(Duration::from_secs(3))
@@ -90,6 +92,7 @@ pub async fn start() {
         .await
         .expect("can't connect to database");
 
+    // Register route handlers
     let app = Router::new()
         .route("/application/create", post(create_application))
         .route("/application/latest", post(get_latest_version))
@@ -98,11 +101,13 @@ pub async fn start() {
         .route("/health", get(health))
         .with_state(pool);
 
+    // Bind to port and startup server
     let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }
 
+/// Request context that provides a connection from the connection pool to route handlers.
 struct RequestContext(AppStore);
 
 #[async_trait]
@@ -118,11 +123,19 @@ where
         let conn_pool = pool.acquire().await.map_err(internal_error)?;
         let app_store = AppStore::from_pool_connection(&CONFIG, conn_pool)
             .await
+            // TODO: Use named error.
             .expect("Failed db");
         Ok(Self(app_store))
     }
 }
 
+/// Administrative api for creating a new application. The corresponding api for adding a
+/// new version for the application is not yet available.
+/// POST:
+/// {
+///     name: String,
+///     description: String
+/// }
 async fn create_application(
     RequestContext(mut app_store): RequestContext,
     Json(params): Json<CreateApplication>,
@@ -139,6 +152,24 @@ async fn create_application(
     }))
 }
 
+/// Returns the latest version of an application based on the client details provided.
+/// POST:
+/// {
+///     client_id: Uuid,
+///     app_id: Uuid,
+///     current_running_version: String,
+///     architecture: Architecture
+/// }
+///
+/// Architecture can be x86_64-pc-windows-gnu or x86_64-unknown-linux-gnu
+///
+/// Returns
+/// {
+/// build_id: Uuid,
+///     version: String,
+///     url: String,
+///     update_required: bool,
+/// }
 async fn get_latest_version(
     RequestContext(mut app_store): RequestContext,
     Json(params): Json<ClientDetails>,
@@ -173,6 +204,14 @@ async fn get_latest_version(
     }))
 }
 
+/// Reports successful build/run for a client.
+/// POST:
+/// {
+///     client_id: Uuid,
+///     app_id: Uuid,
+///     current_running_version: String,
+///     architecture: Architecture
+/// }
 async fn report_build_success(
     RequestContext(mut app_store): RequestContext,
     Json(params): Json<ClientDetails>,
@@ -191,6 +230,15 @@ async fn report_build_success(
     Ok(Json(()))
 }
 
+/// Reports failure build/startup
+/// POST:
+/// {
+///     client_id: Uuid,
+///     app_id: Uuid,
+///     current_running_version: String,
+///     architecture: Architecture
+/// }
+/// TODO: Trigger a roll back on the latest version if too many clients report a failed startup of a version.
 async fn report_build_failure(
     RequestContext(mut app_store): RequestContext,
     Json(params): Json<ClientDetails>,
@@ -209,6 +257,7 @@ async fn report_build_failure(
     Ok(Json({}))
 }
 
+/// Health endpoint for monitoring
 async fn health() -> Result<Json<()>, (StatusCode, String)> {
     Ok(Json({}))
 }
