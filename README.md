@@ -6,7 +6,7 @@ The cvm (Client Version Manager) does the following with executable process:
 2. Run the app until a new version is found.
 3. Stop the old version and begin the process again using the new version from step 1.
 
-![img.png](img.png)
+![process_diagram.svg](process_diagram.svg)
 
 The cvm_server has makefile to setup and seed the database with a test application. The test application was generated using ../infinite_hello.
 
